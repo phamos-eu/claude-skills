@@ -1,6 +1,6 @@
 ---
 name: frappe-print-format
-description: Build a Frappe/ERPNext Print Format that pixel-matches a reference PDF, by extracting exact mm coordinates from the source with PyMuPDF and verifying every change through the real Chrome PDF pipeline. Use whenever the user asks to create, clone, or fix a print format / PDF layout for a Frappe site (invoice, contract, quotation, letterhead), especially when they supply a sample PDF to match, or when a print format renders with wrong margins, clipping, blank pages, or bad pagination.
+description: Build a Frappe/ERPNext Print Format that pixel-matches a reference PDF, by extracting exact mm coordinates from the source with PyMuPDF and verifying every change through the real Chrome PDF pipeline. Use whenever the user asks to create, clone, or fix a print format / PDF layout for a Frappe site (invoice, contract, quotation, letterhead), especially when they supply a sample PDF to match, or when a print format renders with wrong margins, clipping, blank pages, bad pagination, or a full-bleed letterhead graphic that shows a hairline / seam at a corner (often fine locally, broken on the Linux/Frappe-Cloud server).
 ---
 
 # Frappe print formats, measured against a reference PDF
@@ -67,6 +67,27 @@ button takes on both versions, but what sits behind it differs:
   band, footer band — and stacks them**. See `reference/frappe-pdf-pipeline.md`;
   it changes what `position: fixed` can reach and what the sheet measures.
 
+## Escape hatch: stamp the letterhead as one image (only for a body↔footer seam)
+
+**This is not the default.** Build the format in HTML/CSS as above; keep
+letterhead graphics as `background-image` on `#header-html`, `.print-format`, or
+a `position: fixed` body layer. Reach for the stamp **only** when a full-bleed
+graphic (corner wedge, framed border, side bar) must touch the page edge on
+*every* page and therefore gets **split at the body↔footer PDF-merge join** —
+leaving a white hairline that is quantised against the band heights, so it looks
+clean on macOS and breaks on the Linux / Frappe-Cloud server, and sweeping the
+band heights (per `reference/frappe-pdf-pipeline.md`) only narrows it.
+
+If the graphic lives entirely within one band (header-only logo, footer-only
+bar), or the doc is always one page, or the seam closes with band-height
+tuning — do none of this.
+
+When it does apply: stop drawing that graphic in HTML and **stamp the whole
+letterhead as one full-page image behind every finished page**, via a small
+companion app that wraps `get_chrome_pdf`. Full recipe, trade-offs and Frappe
+Cloud steps in `reference/letterhead-stamp.md`; `scripts/stamp_letterhead.py`
+stamps a one-off PDF and scaffolds the app.
+
 ## The gotchas that cost the most time
 
 1. **Shorthand `margin: 0` is ignored.** Frappe parses page margins only from
@@ -129,6 +150,15 @@ button takes on both versions, but what sits behind it differs:
     generator stringifies BeautifulSoup nodes, which drops the `<!--` `-->`
     delimiters, so the comment prints as visible text *and* inflates the
     measured band height. Keep the commentary in the print format's CSS.
+19. **PyMuPDF (`fitz`) is a measurement tool, not a runtime dependency.** It is
+    *not* installed by frappe/erpnext/print_designer, so it is absent on a
+    stock bench and on Frappe Cloud. Use it freely in the `scripts/` here, but
+    any code that ships in an app (a `pdf_generator` hook, a `get_chrome_pdf`
+    wrapper) must stamp/merge with **Pillow + pypdf** only.
+20. **Do not call `get_chrome_pdf` twice inside one request.** Re-entering the
+    chrome pipeline (e.g. a wrapper that renders once to inspect, once to
+    return) intermittently corrupts the page-number footer clones — footer
+    prints twice, numbers off by one. Call it once, post-process the bytes.
 
 ## Scripts
 
@@ -141,3 +171,4 @@ All take `--bench`, and are run with the bench's python (`./env/bin/python`).
 | `scripts/render_pf.py` | Render a Print Format against a real doc through `get_chrome_pdf`, save PDF + page PNGs, report page count and content bottom. |
 | `scripts/compare.py` | Per-word mm shift between two PDFs + pixel diff of rendered pages. |
 | `scripts/paginate_test.py` | Grow a long text field by N paragraphs and report page count / which page a marker word lands on. |
+| `scripts/stamp_letterhead.py` | Paint a full-page letterhead image behind every page of a PDF (Pillow + pypdf); `--stamp` for a one-off, `--scaffold` to generate the companion wrapper app. See `reference/letterhead-stamp.md`. |
