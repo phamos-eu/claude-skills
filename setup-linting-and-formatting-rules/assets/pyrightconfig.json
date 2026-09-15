@@ -1,0 +1,12 @@
+{
+  "include": ["{{APP_NAME}}"],
+  "exclude": ["**/__pycache__"],
+  "venvPath": "../../",
+  "venv": "env",
+  "extraPaths": ["../frappe/", "../erpnext/"],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false,
+  "reportAttributeAccessIssue": false
+}
